@@ -1,0 +1,80 @@
+---
+# ==========================================================
+# Lab 3: PHP paigaldamine kliendiserveritesse Ansible abil
+# Fail: /etc/ansible/playbooks/php7.yml
+# Kontroll:  ansible-playbook --check /etc/ansible/playbooks/php7.yml
+# Kaivitus:  ansible-playbook /etc/ansible/playbooks/php7.yml
+# ==========================================================
+- name: PHP paigaldamine veebiserveritesse
+  hosts: veebiserverid      # grupp failist /etc/ansible/hosts (Ubuntu + CentOS)
+  become: yes               # koik tegevused tehakse root oigustes
+
+  tasks:
+    # ---------- Ubuntu / Debian (apt) ----------
+    - name: install php7 (Ubuntu/Debian)
+      apt:
+        name:
+          - apache2             # veebiserver (Lab 2)
+          - php                 # php7.x pole repos, seega paigaldame uusima php
+          - libapache2-mod-php  # PHP moodul Apache jaoks
+        state: latest           # latest = paigaldab viimase versiooni
+        update_cache: yes       # sama mis apt update
+      when: ansible_os_family == "Debian"
+      notify: restart apache2   # Apache taaskaivitus, et PHP moodul laeks
+
+    # ---------- CentOS / RHEL (dnf) ----------
+    - name: install php (CentOS)
+      dnf:
+        name:
+          - httpd               # veebiserver
+          - php                 # PHP (kasutab php-fpm teenust)
+        state: latest
+      when: ansible_os_family == "RedHat"
+      notify: restart httpd
+
+    - name: php-fpm ja httpd kaivitamine (CentOS)
+      service:
+        name: "{{ item }}"
+        state: started
+        enabled: yes            # kaivitub ka peale reboot'i
+      loop:
+        - php-fpm
+        - httpd
+      ignore_errors: "{{ ansible_check_mode }}"  # --check ajal teenust veel pole
+      when: ansible_os_family == "RedHat"
+
+    - name: tulemuuris http lubamine (CentOS)
+      firewalld:
+        service: http
+        permanent: yes
+        immediate: yes
+        state: enabled
+      when: ansible_os_family == "RedHat"
+      ignore_errors: yes        # kui firewalld ei tootagi, ei katkesta playbooki
+
+    # ---------- Iseseisev ulesanne 1 ----------
+    - name: phpinfo.php loomine kataloogi /var/www/html/
+      copy:
+        dest: "/var/www/html/{{ item }}"
+        content: |
+          <?php
+          phpinfo();
+          ?>
+        mode: "0644"
+      loop:
+        - phpinfo.php           # nouab ulesande tekst
+        - info.php              # nouab esitamise nimekiri
+
+  # Handlerid kaivituvad ainult siis, kui task midagi muutis
+  handlers:
+    - name: restart apache2
+      service:
+        name: apache2
+        state: restarted
+      ignore_errors: "{{ ansible_check_mode }}"  # --check ajal teenust veel pole
+
+    - name: restart httpd
+      service:
+        name: httpd
+        state: restarted
+      ignore_errors: "{{ ansible_check_mode }}"  # --check ajal teenust veel pole

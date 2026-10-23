@@ -1,0 +1,55 @@
+---
+# ==========================================================
+# Iseseisev ulesanne 2: PHP eemaldamine kliendiserveritest
+# Fail: /etc/ansible/playbooks/uninst_php.yml
+#
+# Juhendi kasud probleemse PHP versiooni kasitsi eemaldamiseks:
+#   apt-get purge php7.*
+#   apt-get purge php7.X-common
+#   apt remove php7.X*
+#
+# Serverites on uuem PHP (Ubuntu 8.3, CentOS 8.0),
+# seega eemaldame koik PHP paketid mustriga php*
+# ==========================================================
+- name: PHP eemaldamine veebiserveritest
+  hosts: veebiserverid
+  become: yes
+
+  tasks:
+    # ---------- Ubuntu / Debian ----------
+    - name: PHP pakettide eemaldamine (purge) - Ubuntu/Debian
+      apt:
+        name:
+          - "php*"                  # php, php8.3, php8.3-cli, php8.3-common ...
+          - "libapache2-mod-php*"   # Apache PHP moodul
+        state: absent
+        purge: yes                  # sama mis apt-get purge (kustutab ka konfid)
+      when: ansible_os_family == "Debian"
+      notify: restart apache2
+
+    - name: mittevajalike soltuvuste eemaldamine (apt autoremove)
+      apt:
+        autoremove: yes
+        purge: yes
+      when: ansible_os_family == "Debian"
+
+    # ---------- CentOS / RHEL ----------
+    - name: PHP pakettide eemaldamine - CentOS
+      dnf:
+        name: "php*"                # php, php-cli, php-common, php-fpm ...
+        state: absent
+        autoremove: yes             # eemaldab ka soltuvused
+      when: ansible_os_family == "RedHat"
+      notify: restart httpd
+
+  # Apache taaskaivitus, et PHP moodul enam ei laeks
+  handlers:
+    - name: restart apache2
+      service:
+        name: apache2
+        state: restarted
+
+    - name: restart httpd
+      service:
+        name: httpd
+        state: restarted
